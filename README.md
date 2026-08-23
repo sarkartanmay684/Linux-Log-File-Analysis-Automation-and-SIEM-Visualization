@@ -234,7 +234,6 @@ The lesson generalises well beyond this lab: **a detection rule that fires on no
 linux-log-analysis-siem/
 ├── README.md
 ├── docs/
-│   ├── Linux_Log_Analysis_Report.docx   # full illustrated walkthrough
 │   └── Linux_Log_Analysis_Report.pdf    # PDF export for in-browser preview
 ├── scripts/
 │   ├── Log_Analysis_Automation.py       # detection + CSV export
