@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Office temp files
+~$*.docx
+~$*.xlsx
+~$*.pptx
+.~lock.*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local Splunk artefacts - never commit these
+*.evtx
+splunk_index/
+etc/passwd
+*.conf.local
