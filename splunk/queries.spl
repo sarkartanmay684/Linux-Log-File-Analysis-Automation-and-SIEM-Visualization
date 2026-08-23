@@ -1,0 +1,103 @@
+# =============================================================================
+# Splunk searches used in Objective 3
+# Project : Linux Log File Analysis, Automation, and SIEM Visualization
+# Source  : Linux_2k.log (LogHub)  |  Splunk Enterprise 10.4.1
+#
+# Replace host="tsarkar1" with the constant host value set during ingestion.
+# =============================================================================
+
+
+# -----------------------------------------------------------------------------
+# 1. Base search - all indexed events from this source
+#    Result: 1,296 events
+# -----------------------------------------------------------------------------
+source="Linux_2k.log" host="tsarkar1" sourcetype="Linux"
+
+
+# -----------------------------------------------------------------------------
+# 2. Detection filter - isolate authentication-failure indicators
+#    Result: 514 events
+#    Mirrors the three keyword patterns used in Log_Analysis_Automation.py.
+# -----------------------------------------------------------------------------
+source="Linux_2k.log" host="tsarkar1" sourcetype="Linux"
+("Failed password" OR "authentication failure" OR "invalid user" OR "user unknown")
+
+
+# -----------------------------------------------------------------------------
+# 3. Field extraction and classification
+#    Extracts each failure string from the raw event, expands multi-value
+#    matches into individual rows, labels the event type, and counts by type.
+# -----------------------------------------------------------------------------
+source="Linux_2k.log" host="tsarkar1" sourcetype="Linux"
+("Failed password" OR "authentication failure" OR "invalid user" OR "user unknown")
+| rex field=_raw max_match=0 "(?<failed_line>[^\r\n]*(?:Failed password|authentication failure|invalid user|user unknown)[^\r\n]*)"
+| mvexpand failed_line
+| eval authentication_type=case(
+    like(failed_line,"%Failed password%"),"Failed password",
+    like(failed_line,"%authentication failure%"),"Authentication failure",
+    like(failed_line,"%invalid user%"),"Invalid user",
+    like(failed_line,"%user unknown%"),"User unknown"
+  )
+| stats count as attempts by authentication_type
+| sort - attempts
+
+
+# -----------------------------------------------------------------------------
+# 4. Top attacking sources - which hosts generated the most failures
+#    Produces the Top Attacking Sources table in the report.
+# -----------------------------------------------------------------------------
+source="Linux_2k.log" host="tsarkar1" sourcetype="Linux"
+("authentication failure" OR "Failed password")
+| rex field=_raw "rhost=(?<source_host>\S+)"
+| rex field=_raw "user=(?<target_user>\S+)"
+| stats count as attempts,
+        min(_time) as first_seen,
+        max(_time) as last_seen,
+        values(target_user) as targeted
+  by source_host
+| eval burst_seconds=last_seen-first_seen
+| eval rate_per_min=round(attempts/(burst_seconds/60),1)
+| convert ctime(first_seen) ctime(last_seen)
+| sort - attempts
+| head 10
+
+
+# -----------------------------------------------------------------------------
+# 5. Targeted account concentration - how focused is the campaign
+#    Result: root accounts for 94.4% of all named-user attempts
+# -----------------------------------------------------------------------------
+source="Linux_2k.log" host="tsarkar1" sourcetype="Linux" "authentication failure"
+| rex field=_raw "user=(?<target_user>\S+)"
+| stats count by target_user
+| sort - count
+| eventstats sum(count) as total
+| eval percent=round(count*100/total,1)
+
+
+# -----------------------------------------------------------------------------
+# 6. Attack timeline - failures over time (Visualization tab -> line chart)
+#    Reveals the bursty pattern, including the 10 July peak.
+# -----------------------------------------------------------------------------
+source="Linux_2k.log" host="tsarkar1" sourcetype="Linux"
+("authentication failure" OR "Failed password")
+| timechart span=1h count as failed_attempts
+
+
+# -----------------------------------------------------------------------------
+# 7. Burst detection - sources exceeding 10 failures inside one minute
+#    The rate-based rule that catches the fast bursts (and misses low-and-slow).
+# -----------------------------------------------------------------------------
+source="Linux_2k.log" host="tsarkar1" sourcetype="Linux" "authentication failure"
+| rex field=_raw "rhost=(?<source_host>\S+)"
+| bucket _time span=1m
+| stats count as attempts by _time, source_host
+| where attempts > 10
+| sort - attempts
+
+
+# -----------------------------------------------------------------------------
+# 8. Service health - abnormal exits unrelated to the authentication activity
+#    Result: 43 "logrotate: ALERT exited abnormally with [1]" events
+# -----------------------------------------------------------------------------
+source="Linux_2k.log" host="tsarkar1" sourcetype="Linux" "exited abnormally"
+| stats count by source
